@@ -260,17 +260,9 @@ def run_forever(cfg: Settings) -> None:
         cfg.promo_before_quote,
     )
 
-    last = store.last_post_at()
-    if last > 0:
-        remain = next_interval_s(cfg) - (time.time() - last)
-        if remain > 45:
-            log.info("Last post %.0fmin ago — sleep %.0fs first", (time.time() - last) / 60, remain)
-            time.sleep(remain)
-    else:
-        warmup = random.uniform(90, 8 * 60)
-        log.info("First run — warmup sleep %.0fs", warmup)
-        time.sleep(warmup)
-
+    # One board post on every process start (redeploy / restart) so a
+    # new build is visible immediately. Interval wait starts after that.
+    boot = True
     while True:
         after_quote = False
         try:
@@ -280,7 +272,12 @@ def run_forever(cfg: Settings) -> None:
                 log.info("Day cap hit — sleep until after UTC midnight (%.0fs)", sleep_s)
                 time.sleep(sleep_s)
                 continue
-            kind = run_once(cfg, store)
+            if boot:
+                boot = False
+                log.info("Boot post now — interval wait starts after this")
+                kind = "promo" if run_promo(cfg, store, now) else "skip"
+            else:
+                kind = run_once(cfg, store)
             after_quote = kind == "quote"
         except KeyboardInterrupt:
             log.info("Stopped")
