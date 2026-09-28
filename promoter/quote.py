@@ -85,27 +85,33 @@ def search_query(pair: PairHint) -> str:
 
 
 def quote_comment(pair: PairHint, include_source: bool, host: str) -> str:
-    tick = f"${pair.label.lower()}" if random.random() < 0.6 else f"${pair.label}"
+    tick = "$" + pair.label.strip().lstrip("$").upper()
     pct = f"{pair.hold_pct * 100:.1f}%"
-    crowd = "7d pnl crowd" if pair.ranker == "pnl" else (
-        "7d roi crowd" if pair.ranker == "roi" else "pnl+roi crowd"
-    )
+    if pair.ranker == "roi":
+        board = f"top {pair.listed} on 7d ROI"
+        src = f"{host}/?ranker=roi"
+    elif pair.ranker == "both":
+        board = f"top {pair.listed} PnL+ROI"
+        src = f"{host}/?ranker=both"
+    else:
+        board = f"top {pair.listed} on 7d PnL"
+        src = host
     lines = random.choice(
         [
-            [f"yeah — {crowd} is {pct} {pair.side} {tick} right now."],
-            [f"{tick} is #{pair.rank} on the top {pair.listed} hold map ({pct} {pair.side})."],
-            [f"this tracks. top {pair.listed} {pair.ranker} wallets sitting {pct} {pair.side} {tick}."],
-            [f"{pct} of the {crowd} in {tick} {pair.side}. not a single wallet — the crowd."],
-            [f"same tape on bagrank. {tick} {pair.side} {pct}."],
+            [
+                f"Same tape on the board. {board} is {pct} {pair.side} {tick} right now.",
+            ],
+            [
+                f"{tick} is #{pair.rank} on the {board} hold map ({pct} {pair.side}).",
+            ],
+            [
+                f"{pct} of {board} sitting {pair.side} {tick}. Share of wallets, not one size.",
+            ],
         ]
     )
     text = "\n".join(lines)
     if include_source:
-        src = f"source: {host}" if pair.ranker == "pnl" else (
-            f"source: {host}/?ranker=roi" if pair.ranker == "roi" else f"source: {host}/?ranker=both"
-        )
-        if random.random() < 0.55:
-            text = f"{text}\n{src}"
+        text = f"{text}\n{src}"
     return text.strip()[:280]
 
 
@@ -212,7 +218,7 @@ def pick_quote(
             score=0,
             pair=pair,
         )
-        comment = quote_comment(pair, random.random() < 0.35, cfg.site_host)
+        comment = quote_comment(pair, True, cfg.site_host)
         return fake, comment
 
     if not cfg.has_x():
@@ -290,6 +296,5 @@ def pick_quote(
 
     if best is None:
         return None
-    include_source = random.random() < 0.35
-    comment = quote_comment(best.pair, include_source, cfg.site_host)
+    comment = quote_comment(best.pair, True, cfg.site_host)
     return best, comment

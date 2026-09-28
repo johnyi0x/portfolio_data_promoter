@@ -17,10 +17,10 @@ DOMINATE_MIN = 0.10
 
 def source_line(ranker: Ranker, host: str) -> str:
     if ranker == "pnl":
-        return f"source: {host}"
+        return host
     if ranker == "roi":
-        return f"source: {host}/?ranker=roi"
-    return f"source: {host}/?ranker=both"
+        return f"{host}/?ranker=roi"
+    return f"{host}/?ranker=both"
 
 
 def pick_ranker(has_roi: bool, last: str) -> Ranker:
@@ -105,23 +105,16 @@ def _story(
         captured_at=board.captured_at,
         cycle_stamp=board.cycle_stamp,
         top_rows=board.rows[:5],
-        chart_series=series or board.series[:5],
+        chart_series=series or board.series[:3],
         hours=board.hours,
     )
 
 
 def _chart_series(board: Board, focus: str | None) -> list[Series]:
     smap = _series_map(board)
-    ordered: list[Series] = []
     if focus and focus in smap:
-        ordered.append(smap[focus])
-    for s in board.series:
-        if s.coin == focus:
-            continue
-        ordered.append(s)
-        if len(ordered) >= 3:
-            break
-    return ordered
+        return [smap[focus]]
+    return board.series[:1]
 
 
 def collect_stories(board: Board, host: str, include_source: bool) -> list[Story]:

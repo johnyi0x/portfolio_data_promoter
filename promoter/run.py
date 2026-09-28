@@ -59,7 +59,8 @@ def seconds_until_utc_midnight(now: datetime) -> float:
 def alt_text(story) -> str:
     f = story.facts
     label = f.get("label") or f.get("top_label") or "bagrank"
-    return f"bagrank {story.ranker} {story.kind} chart for {label}"
+    board = {"pnl": "7d PnL", "roi": "7d ROI", "both": "PnL+ROI"}.get(story.ranker, "7d PnL")
+    return f"bagrank.xyz {board} chart — {story.kind} for {label}, top {story.listed} wallets"
 
 
 def pairs_payload(board) -> list[dict]:
@@ -167,7 +168,7 @@ def run_quote(cfg: Settings, store: Store, now: datetime) -> bool:
 
 def run_promo(cfg: Settings, store: Store, now: datetime) -> bool:
     ranker = pick_ranker(cfg.has_roi(), store.last_ranker())
-    include_source = random.random() < cfg.source_rate
+    include_source = True
     log.info("Board post ranker=%s source=%s", ranker, include_source)
     board = load_board(cfg.pnl_url, cfg.roi_url, ranker, cfg.venue)
     if board.error and not board.rows:
