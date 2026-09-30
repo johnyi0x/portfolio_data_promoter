@@ -8,11 +8,11 @@ from typing import Iterable
 
 from .models import Board, HistPoint, Pair, Ranker, Series, Story
 
-LOAD_MIN_PP = 0.025
+LOAD_MIN_PP = 0.04
 LOAD_MIN_HOURS = 3.0
 LOAD_MAX_HOURS = 18.0
-HOUR_MOVE_MIN = 0.012
-DOMINATE_MIN = 0.10
+HOUR_MOVE_MIN = 0.04
+DOMINATE_MIN = 0.08
 
 
 def source_line(ranker: Ranker, host: str) -> str:

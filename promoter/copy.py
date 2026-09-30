@@ -1,4 +1,4 @@
-"""Facts stay in templates. Claude only rearranges words, and only sometimes."""
+"""Sentences are built from the board. Claude stays off unless CLAUDE_RATE is set."""
 
 from __future__ import annotations
 
@@ -39,49 +39,34 @@ def _tick(label: str) -> str:
     return "$" + str(label).strip().lstrip("$").upper()
 
 
-def _crowd(story: Story) -> str:
-    listed = story.listed
+def _who(story: Story) -> str:
+    n = story.listed
+    if story.ranker == "roi":
+        return f"the top {n} wallets by 7-day return"
     if story.ranker == "both":
-        return random.choice(
-            [
-                f"the top {listed} on PnL + ROI",
-                f"PnL + ROI, top {listed}",
-            ]
-        )
-    window = str(story.facts.get("window") or ("7d PnL" if story.ranker == "pnl" else "7d ROI"))
-    return random.choice(
-        [
-            f"the top {listed} ({window})",
-            f"top {listed}, {window}",
-        ]
-    )
-
-
-def _metric(story: Story) -> str:
-    if story.ranker == "both":
-        return "PnL + ROI"
-    return str(story.facts.get("window") or ("7d PnL" if story.ranker == "pnl" else "7d ROI"))
+        return f"the top {n} wallets by profit and return"
+    return f"the top {n} wallets by 7-day profit"
 
 
 def _side_word(side: str) -> str:
     if side == "long":
-        return "longs"
+        return "long"
     if side == "short":
-        return "shorts"
+        return "short"
     return ""
 
 
-def _also_line(story: Story) -> str:
+def _also_bit(story: Story) -> str:
     f = story.facts
     label = f.get("also_label")
     pct = f.get("also_pct")
     if not label or pct is None:
         return ""
-    if str(label).upper() == str(f.get("label") or "").upper():
+    if str(label).upper() == str(f.get("label") or f.get("top_label") or "").upper():
         return ""
     side = _side_word(str(f.get("also_side") or ""))
     bit = f" {side}" if side else ""
-    return f"{_tick(str(label))}{bit} still {pct}% on the same board — that's the part this chart leaves out."
+    return f"{_tick(str(label))} is still {pct}%{bit} on that same board."
 
 
 def _maybe_source(story: Story, lines: list[str]) -> str:
@@ -91,156 +76,164 @@ def _maybe_source(story: Story, lines: list[str]) -> str:
     return text.strip()
 
 
-def _load(story: Story) -> str:
+def _opener(text: str) -> str:
+    line = text.strip().split("\n", 1)[0].lower()
+    return " ".join(line.split()[:4])
+
+
+def _choose(story: Story, voices: list[list[str]], recent: list[str] | None) -> str:
+    used = {_opener(t) for t in (recent or [])}
+    order = voices[:]
+    random.shuffle(order)
+    fallback = ""
+    for lines in order:
+        text = _maybe_source(story, [ln for ln in lines if ln])
+        if not fallback:
+            fallback = text
+        if _opener(text) not in used:
+            return text
+    return fallback
+
+
+def _load(story: Story, recent: list[str] | None = None) -> str:
     f = story.facts
     t = _tick(f["label"])
-    board = _crowd(story)
-    also = _also_line(story)
+    who = _who(story)
+    also = _also_bit(story)
+    voices = [
+        [
+            f"{t} is a bigger share of {who} than it was {f['hours']} hours ago.",
+            f"{f['from_pct']}% then, {f['to_pct']}% now.",
+        ],
+        [
+            f"{f['hours']} hours ago, {f['from_pct']}% of {who} were in {t}.",
+            f"It's {f['to_pct']}% now.",
+        ],
+        [
+            also,
+            f"{t} grew from {f['from_pct']}% to {f['to_pct']}% in {f['hours']} hours.",
+        ],
+    ]
+    return _choose(story, voices, recent)
+
+
+def _dump(story: Story, recent: list[str] | None = None) -> str:
+    f = story.facts
+    t = _tick(f["label"])
+    who = _who(story)
+    also = _also_bit(story)
+    voices = [
+        [
+            f"{t} is a smaller share of {who} than it was {f['hours']} hours ago.",
+            f"{f['from_pct']}% then, {f['to_pct']}% now.",
+        ],
+        [
+            f"{f['hours']} hours ago, {f['from_pct']}% of {who} were in {t}.",
+            f"{f['to_pct']}% are now.",
+        ],
+        [
+            also,
+            f"{t} went from {f['from_pct']}% to {f['to_pct']}% over {f['hours']} hours.",
+        ],
+    ]
+    return _choose(story, voices, recent)
+
+
+def _inflow(story: Story, recent: list[str] | None = None) -> str:
+    f = story.facts
+    t = _tick(f["label"])
     side = _side_word(str(f.get("side") or ""))
     side_bit = f" {side}" if side else ""
     voices = [
         [
-            f"{t}{side_bit} now {f['to_pct']}% of {board}, {f['hours']}h.",
-            also or "One line. The rest of the names are on the map.",
+            f"Over the last hour, more of {_who(story)} moved into {t}.",
+            f"{f['hold_pct']}% of them are{side_bit} it now.",
         ],
         [
-            also or f"The chart is only {t}.",
-            f"{f['pp']}pp in {f['hours']}h, now {f['to_pct']}%.",
-        ],
-        [
-            f"{f['hours']}h, {t}{side_bit} at {f['to_pct']}%.",
-            also or f"Was {f['from_pct']}% — the other tiles are why the link is there.",
+            f"{t} picked up share this hour.",
+            f"{f['hold_pct']}% of {_who(story)} are{side_bit} it.",
         ],
     ]
-    if float(f["to_pct"]) >= float(f["from_pct"]) * 1.9 and float(f["from_pct"]) > 0:
-        voices.append(
-            [
-                f"{t}{side_bit} nearly doubled in {f['hours']}h. Now {f['to_pct']}%.",
-                also or "The board shows who didn't.",
-            ]
-        )
-    return _maybe_source(story, random.choice(voices))
+    return _choose(story, voices, recent)
 
 
-def _dump(story: Story) -> str:
+def _outflow(story: Story, recent: list[str] | None = None) -> str:
     f = story.facts
     t = _tick(f["label"])
-    board = _crowd(story)
-    also = _also_line(story)
     side = _side_word(str(f.get("side") or ""))
     side_bit = f" {side}" if side else ""
     voices = [
         [
-            f"{t}{side_bit} down to {f['to_pct']}% of {board} in {f['hours']}h.",
-            also or "Whatever took that share is on the map.",
+            f"Over the last hour, fewer of {_who(story)} are in {t}.",
+            f"{f['hold_pct']}% are still{side_bit}.",
         ],
         [
-            also or f"Look at who is still large.",
-            f"{t} gave up {f['pp']}pp. {f['to_pct']}% left after {f['hours']}h.",
-        ],
-        [
-            f"{f['hours']}h and {t} is {f['to_pct']}% of {board}.",
-            also or f"It was {f['from_pct']}%. The link is the other names.",
+            f"{t} lost share in the last hour.",
+            f"{f['hold_pct']}% of {_who(story)} are still{side_bit} it.",
         ],
     ]
-    return _maybe_source(story, random.choice(voices))
+    return _choose(story, voices, recent)
 
 
-def _inflow(story: Story) -> str:
+def _dominate(story: Story, recent: list[str] | None = None) -> str:
     f = story.facts
     t = _tick(f["label"])
-    a = [
+    side = _side_word(str(f.get("side") or ""))
+    who = _who(story)
+    voices = [
         [
-            f"Biggest add this hour: {t} {f['side']}s, +{f['pp']}pp.",
-            f"Now {f['hold_pct']}% of {_crowd(story)}.",
+            f"This is where {who} are sitting.",
+            f"{t} is the biggest slice, {f['hold_pct']}% {side}.",
         ],
         [
-            f"{t} {f['side']} +{f['pp']}pp vs the last hour.",
-            f"{_crowd(story)} now {f['hold_pct']}% in it.",
+            f"{f['hold_pct']}% of {who} are {side} {t}.",
+            "That's the largest name on the board.",
+        ],
+        [
+            f"{f['wallets']} of {who} are in {t}, {f['agree']}% on the same side.",
         ],
     ]
-    return _maybe_source(story, random.choice(a))
+    return _choose(story, voices, recent)
 
 
-def _outflow(story: Story) -> str:
+def _flip(story: Story, recent: list[str] | None = None) -> str:
     f = story.facts
     t = _tick(f["label"])
-    a = [
+    voices = [
         [
-            f"Biggest cut this hour: {t} {f['side']}s, −{f['pp']}pp.",
-            f"Still {f['hold_pct']}% of {_crowd(story)}.",
+            f"{t} was {f['from_side']}. {_who(story)} are {f['to_side']} it now.",
+            f"{f['hold_pct']}% of them.",
         ],
         [
-            f"{t} −{f['pp']}pp this hour. {_crowd(story)} stepping out.",
-            f"Hold now {f['hold_pct']}%.",
-        ],
-    ]
-    return _maybe_source(story, random.choice(a))
-
-
-def _dominate(story: Story) -> str:
-    f = story.facts
-    t = _tick(f["label"])
-    a = [
-        [
-            f"{t} {f['side']} still owns the map at {f['hold_pct']}%.",
-            f"{f['wallets']} of {_crowd(story)} in it ({f['agree']}% same side).",
-        ],
-        [
-            f"{t} is #1 on the {_metric(story)} hold map — {f['hold_pct']}% {f['side']}.",
-            f"{f['wallets']} wallets, {f['agree']}% agreement.",
+            f"{_who(story)} flipped {t} from {f['from_side']} to {f['to_side']}.",
+            f"{f['hold_pct']}% of the board.",
         ],
     ]
-    return _maybe_source(story, random.choice(a))
+    return _choose(story, voices, recent)
 
 
-def _flip(story: Story) -> str:
-    f = story.facts
-    t = _tick(f["label"])
-    a = [
-        [
-            f"{t} flipped {f['from_side']} → {f['to_side']} at {f['when']}.",
-            f"Hold {f['hold_pct']}% on the {_metric(story)} board.",
-        ],
-        [
-            f"{_crowd(story)} just flipped {t} to {f['to_side']} ({f['hold_pct']}%).",
-        ],
-    ]
-    return _maybe_source(story, random.choice(a))
-
-
-def _digest(story: Story) -> str:
+def _digest(story: Story, recent: list[str] | None = None) -> str:
     f = story.facts
     t = _tick(f["top_label"])
-    extra = []
-    if f.get("in_label") and f.get("in_pp") is not None:
-        extra.append(f"{_tick(f['in_label'])} +{f['in_pp']}pp")
-    if f.get("out_label") and f.get("out_pp") is not None:
-        extra.append(f"{_tick(f['out_label'])} −{f['out_pp']}pp")
-    move = " · ".join(extra) if extra else "quiet vs last hour"
-    a = [
+    side = _side_word(str(f.get("top_side") or ""))
+    voices = [
         [
-            f"{t} still #1 at {f['top_pct']}% {f['top_side']}.",
-            f"This hour: {move}.",
-        ],
-        [
-            f"{_crowd(story)} this hour — {t} {f['top_pct']}% {f['top_side']}.",
-            move + ".",
+            f"{t} is still the biggest name on {_who(story)}, {f['top_pct']}% {side}.",
+            "The rest of the names are on the board.",
         ],
     ]
-    return _maybe_source(story, random.choice(a))
+    return _choose(story, voices, recent)
 
 
-def _ranks(story: Story) -> str:
+def _ranks(story: Story, recent: list[str] | None = None) -> str:
     f = story.facts
-    hour = f.get("hour") or "this hour"
-    lines = [f"{_metric(story)} · top 5 · {hour}"]
-    for row in f.get("rows") or []:
-        dex = f" · {row['dex']}" if row.get("dex") else ""
-        lines.append(
-            f"{row['rank']}  {_tick(row['label'])} {row['side']}  {row['hold_pct']}%{dex}"
-        )
-    return _maybe_source(story, lines)
+    bits = []
+    for row in (f.get("rows") or [])[:3]:
+        bits.append(f"{_tick(row['label'])} {row['hold_pct']}% {row['side']}")
+    voices = [
+        [f"Right now, {_who(story)}: {', '.join(bits)}."],
+    ]
+    return _choose(story, voices, recent)
 
 
 TEMPLATES = {
@@ -255,9 +248,8 @@ TEMPLATES = {
 }
 
 
-def template_text(story: Story) -> str:
-    return _fit(TEMPLATES[story.kind](story))
-
+def template_text(story: Story, recent: list[str] | None = None) -> str:
+    return _fit(TEMPLATES[story.kind](story, recent))
 
 def _split_cta(text: str) -> tuple[str, str]:
     lines = [ln.rstrip() for ln in text.strip().split("\n")]
@@ -387,15 +379,17 @@ def _claude(cfg: Settings, story: Story) -> str | None:
 
 
 def compose(cfg: Settings, story: Story, store: Store, now) -> tuple[str, bool]:
-    base = template_text(story)
-    if story.kind == "ranks" or not cfg.has_claude():
+    recent = store.recent_texts()
+    base = template_text(story, recent)
+    # Off unless CLAUDE_RATE is set above 0. A dropped rewrite is money spent for nothing.
+    if cfg.claude_rate <= 0 or not cfg.has_claude():
         return base, False
     if store.claude_today(now) >= cfg.claude_max_per_day:
         return base, False
     if random.random() > cfg.claude_rate:
         return base, False
     rewritten = _claude(cfg, story)
-    if not rewritten or _too_close(rewritten, store.recent_texts()):
+    if not rewritten or _too_close(rewritten, recent):
         return base, False
     store.mark_claude(now)
     return rewritten, True

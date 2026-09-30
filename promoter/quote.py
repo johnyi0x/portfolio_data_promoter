@@ -88,25 +88,19 @@ def quote_comment(pair: PairHint, include_source: bool, host: str) -> str:
     tick = "$" + pair.label.strip().lstrip("$").upper()
     pct = f"{pair.hold_pct * 100:.1f}%"
     if pair.ranker == "roi":
-        board = f"top {pair.listed} on 7d ROI"
+        board = f"top {pair.listed} by 7-day return"
         src = f"{host}/?ranker=roi"
     elif pair.ranker == "both":
-        board = f"top {pair.listed} PnL+ROI"
+        board = f"top {pair.listed} by profit and return"
         src = f"{host}/?ranker=both"
     else:
-        board = f"top {pair.listed} on 7d PnL"
+        board = f"top {pair.listed} by 7-day profit"
         src = host
     lines = random.choice(
         [
-            [
-                f"Same tape on the board. {board} is {pct} {pair.side} {tick} right now.",
-            ],
-            [
-                f"{tick} is #{pair.rank} on the {board} hold map ({pct} {pair.side}).",
-            ],
-            [
-                f"{pct} of {board} sitting {pair.side} {tick}. Share of wallets, not one size.",
-            ],
+            [f"On the live board, {pct} of the {board} are {pair.side} {tick}."],
+            [f"{tick} is #{pair.rank} on that board right now, {pct} {pair.side}."],
+            [f"Same name on bagrank: {pct} of the {board} are {pair.side} {tick}."],
         ]
     )
     text = "\n".join(lines)

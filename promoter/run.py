@@ -262,34 +262,27 @@ def run_forever(cfg: Settings) -> None:
         cfg.promo_before_quote,
     )
 
-    # One board post on every process start, even if today's cap is
-    # already full. That post is how a redeploy gets checked. The cap
-    # applies again on the next slot.
-    if store.quotes_paused():
-        store.data["quotes_paused_until"] = 0.0
-        store.save()
-        log.info("Old search pause cleared. No search has run yet this process.")
-    boot = True
+    last = store.last_post_at()
+    if last > 0:
+        wait = cfg.min_interval_min * 60.0 - (time.time() - last)
+        if wait > 45:
+            log.info(
+                "Last post %.0f min ago — waiting %.0f min. A restart does not post by itself.",
+                (time.time() - last) / 60.0,
+                wait / 60.0,
+            )
+            time.sleep(wait)
+
     while True:
         after_quote = False
         try:
             now = datetime.now(timezone.utc)
-            if boot:
-                boot = False
-                posted = store.posts_today(now)
-                log.info(
-                    "Boot post now (%s/%s already today) — interval wait starts after this",
-                    posted,
-                    cfg.max_posts_per_day,
-                )
-                kind = "promo" if run_promo(cfg, store, now) else "skip"
-            else:
-                if store.posts_today(now) >= cfg.max_posts_per_day:
-                    sleep_s = seconds_until_utc_midnight(now)
-                    log.info("Day cap hit — sleep until after UTC midnight (%.0fs)", sleep_s)
-                    time.sleep(sleep_s)
-                    continue
-                kind = run_once(cfg, store)
+            if store.posts_today(now) >= cfg.max_posts_per_day:
+                sleep_s = seconds_until_utc_midnight(now)
+                log.info("Day cap hit — sleep until after UTC midnight (%.0fs)", sleep_s)
+                time.sleep(sleep_s)
+                continue
+            kind = run_once(cfg, store)
             after_quote = kind == "quote"
         except KeyboardInterrupt:
             log.info("Stopped")
