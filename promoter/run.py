@@ -262,27 +262,33 @@ def run_forever(cfg: Settings) -> None:
         cfg.promo_before_quote,
     )
 
-    # One board post on every process start (redeploy / restart) so a
-    # new build is visible immediately. Interval wait starts after that.
+    # One board post on every process start, even if today's cap is
+    # already full. That post is how a redeploy gets checked. The cap
+    # applies again on the next slot.
     if store.quotes_paused():
         store.data["quotes_paused_until"] = 0.0
         store.save()
-        log.info("Cleared quote pause from the last search 401 — will try again")
+        log.info("Old search pause cleared. No search has run yet this process.")
     boot = True
     while True:
         after_quote = False
         try:
             now = datetime.now(timezone.utc)
-            if store.posts_today(now) >= cfg.max_posts_per_day:
-                sleep_s = seconds_until_utc_midnight(now)
-                log.info("Day cap hit — sleep until after UTC midnight (%.0fs)", sleep_s)
-                time.sleep(sleep_s)
-                continue
             if boot:
                 boot = False
-                log.info("Boot post now — interval wait starts after this")
+                posted = store.posts_today(now)
+                log.info(
+                    "Boot post now (%s/%s already today) — interval wait starts after this",
+                    posted,
+                    cfg.max_posts_per_day,
+                )
                 kind = "promo" if run_promo(cfg, store, now) else "skip"
             else:
+                if store.posts_today(now) >= cfg.max_posts_per_day:
+                    sleep_s = seconds_until_utc_midnight(now)
+                    log.info("Day cap hit — sleep until after UTC midnight (%.0fs)", sleep_s)
+                    time.sleep(sleep_s)
+                    continue
                 kind = run_once(cfg, store)
             after_quote = kind == "quote"
         except KeyboardInterrupt:
