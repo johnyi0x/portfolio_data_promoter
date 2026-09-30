@@ -224,9 +224,14 @@ def pick_quote(
     if not cfg.has_x():
         return None
 
-    from .xpost import make_client, search_recent
+    from .xpost import make_search_client, search_recent
 
-    client = make_client(cfg)
+    client = make_search_client(cfg)
+    if not cfg.x_bearer:
+        log.warning(
+            "X_BEARER_TOKEN is unset. Recent search with the posting keys returned 401 before. "
+            "Quotes need the Bearer Token from Keys & Tokens (app-only), not the OAuth 1.0 access token."
+        )
     now = datetime.now(timezone.utc)
     seen_ids = store.quoted_ids()
     seen_authors = store.quoted_authors()
@@ -241,7 +246,17 @@ def pick_quote(
             msg = str(exc).lower()
             if "403" in msg or "401" in msg or "not available" in msg:
                 store.pause_quotes(hours=24)
-                log.warning("Search/read not allowed on this X app — quotes paused 24h")
+                if not cfg.x_bearer:
+                    log.warning(
+                        "X recent search 401/403. Posting works; search does not, on these keys. "
+                        "Set X_BEARER_TOKEN to the Bearer Token on Keys & Tokens. "
+                        "The X plan also has to include recent search. Quotes paused 24h."
+                    )
+                else:
+                    log.warning(
+                        "X recent search 401/403 even with the bearer token. "
+                        "This app's plan does not include recent search, so quote-reposts cannot run. Paused 24h."
+                    )
                 return None
             continue
         log.info("Search %s hits=%s", pair.label, len(tweets))

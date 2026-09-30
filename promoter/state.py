@@ -140,6 +140,20 @@ class Store:
                 out.append(str(row["text"]))
         return out
 
+    def recent_kinds(self, n: int = 4) -> list[str]:
+        """Newest board-post kinds first. Quotes are skipped."""
+        out: list[str] = []
+        for row in reversed(self.data.get("posts") or []):
+            if not isinstance(row, dict):
+                continue
+            kind = str(row.get("kind") or "")
+            if not kind or kind == "quote":
+                continue
+            out.append(kind)
+            if len(out) >= n:
+                break
+        return out
+
     def last_ranker(self) -> str:
         posts = list(self.data.get("posts") or [])
         for row in reversed(posts):

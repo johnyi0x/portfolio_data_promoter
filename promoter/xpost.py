@@ -24,6 +24,15 @@ def make_client(cfg: Settings):
     )
 
 
+def make_search_client(cfg: Settings):
+    """Recent search is app-only. User-context OAuth 1.0a can post and still 401 on search."""
+    import tweepy
+
+    if cfg.x_bearer:
+        return tweepy.Client(bearer_token=cfg.x_bearer, wait_on_rate_limit=False)
+    return make_client(cfg)
+
+
 def make_api(cfg: Settings):
     import tweepy
 

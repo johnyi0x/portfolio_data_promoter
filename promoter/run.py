@@ -176,7 +176,9 @@ def run_promo(cfg: Settings, store: Store, now: datetime) -> bool:
         return False
     store.set_last_pairs(pairs_payload(board))
 
-    story = pick_story(board, cfg.site_host, include_source, store.recent_keys())
+    story = pick_story(
+        board, cfg.site_host, include_source, store.recent_keys(), store.recent_kinds()
+    )
     if story is None:
         log.warning("No story to post")
         return False
@@ -262,6 +264,10 @@ def run_forever(cfg: Settings) -> None:
 
     # One board post on every process start (redeploy / restart) so a
     # new build is visible immediately. Interval wait starts after that.
+    if store.quotes_paused():
+        store.data["quotes_paused_until"] = 0.0
+        store.save()
+        log.info("Cleared quote pause from the last search 401 — will try again")
     boot = True
     while True:
         after_quote = False

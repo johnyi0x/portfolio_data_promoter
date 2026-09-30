@@ -110,6 +110,19 @@ def _story(
     )
 
 
+def _also(board: Board, focus: str | None) -> dict:
+    """A second name the single-line chart does not show. Reason to open the site."""
+    for pair in board.rows:
+        if focus and pair.coin == focus:
+            continue
+        return {
+            "also_label": pair.label,
+            "also_pct": round(pair.hold_pct * 100, 1),
+            "also_side": pair.side,
+        }
+    return {}
+
+
 def _chart_series(board: Board, focus: str | None) -> list[Series]:
     smap = _series_map(board)
     if focus and focus in smap:
@@ -152,6 +165,7 @@ def collect_stories(board: Board, host: str, include_source: bool) -> list[Story
                         "start": _utc_hour(a.ts),
                         "listed": listed,
                         "window": board.rank_window,
+                        **_also(board, pair.coin),
                     },
                     include_source=include_source,
                     host=host,
@@ -181,6 +195,7 @@ def collect_stories(board: Board, host: str, include_source: bool) -> list[Story
                         "start": _utc_hour(a.ts),
                         "listed": listed,
                         "window": board.rank_window,
+                        **_also(board, pair.coin),
                     },
                     include_source=include_source,
                     host=host,
@@ -368,11 +383,20 @@ def collect_stories(board: Board, host: str, include_source: bool) -> list[Story
     return out
 
 
+def _kind_chart(kind: str) -> str:
+    if kind in {"inflow", "outflow"}:
+        return "movers"
+    if kind in {"dominate", "ranks", "digest"}:
+        return "heatmap"
+    return "hold"
+
+
 def pick_story(
     board: Board,
     host: str,
     include_source: bool,
     recent_keys: Iterable[str],
+    recent_kinds: Iterable[str] = (),
 ) -> Story | None:
     recent = set(recent_keys)
     stories = collect_stories(board, host, include_source)
@@ -380,8 +404,16 @@ def pick_story(
     pool = fresh or stories
     if not pool:
         return None
+    # The biggest 18h move always outscores the map, so every post was the
+    # same green area chart. Never repeat the previous chart type when
+    # another type exists.
+    last = next(iter(recent_kinds), "")
+    last_chart = _kind_chart(last) if last else ""
+    if last_chart:
+        other = [s for s in pool if s.chart != last_chart]
+        if other:
+            pool = other
     pool.sort(key=lambda s: -s.score)
-    # Weighted pick among the top few so it isn't always the same coin.
-    top = pool[: min(5, len(pool))]
+    top = pool[: min(4, len(pool))]
     weights = [max(0.2, s.score) for s in top]
     return random.choices(top, weights=weights, k=1)[0]

@@ -14,26 +14,25 @@ from .state import Store
 
 log = logging.getLogger("promoter")
 
-SYSTEM = """You write the caption under a chart screenshot on X.
-Goal: a Hyperliquid trader reads it, understands the chart, and taps bagrank.xyz.
+SYSTEM = """You write the caption under a chart that is ALREADY on the tweet.
+The chart title already shows the ticker and the percent move. Do not open by repeating that title.
 
-Structure, in order:
-1. Hook — sentence case, leading cashtag ($SUI). What changed, in plain English. Not a metric dump.
-2. Meaning — one short line of what the number is (share of top-N wallets ranked on 7d PnL or ROI; one wallet, one vote). Do not repeat this if the hook already said it.
-3. Site line — if SOURCE is yes, last line must be exactly SOURCE_LINE. Never write "source:".
+What makes someone tap bagrank.xyz: the chart is one name. The site is the rest of the board.
+Use ALSO when present — another coin on the same board the image does not plot.
+
+Vary the shape. Pick one, and do not reuse a shape you would have used last time:
+- One short line plus the site URL. Chart does the talking.
+- Lead with the OTHER coin, then one clause on the focus name.
+- Say what the number means (share of wallets, one vote) without "moved from X% to Y%" as the first sentence.
+- A ranked observation, not a press release.
 
 Rules:
-- 2-4 lines. Under 220 characters before the site line.
-- Last line is always the site URL when SOURCE is yes. That line is the only clickable path to the board — do not skip it, do not prefix "source:".
-- Keep every number exactly (percents, pp, hours, ranks, wallet counts, times).
-- Cashtags: $TICKER in uppercase.
-- Sentence case. Never all-lowercase. Never all-caps except tickers and PnL/ROI.
-- No hashtags, no emojis, no "what do you think", no "thread", no "GM".
-- No hype: massive, huge, incredible, alert, breaking, just in, don't fade, ape, moon.
-- No bot tells: "been adding", "this tracks", "yeah —", "the 7d pnl crowd", "source:", "live board:".
-- Do not invent coins, moves, prices, or reasons (funding, news, liquidations) that are not in FACTS.
-- Do not pitch the product. The chart plus bagrank.xyz is the pitch.
-Voice: a trader showing a screenshot of something they noticed, not a promo account."""
+- 1-3 lines. Last line is exactly SOURCE_LINE when SOURCE is yes. Never write "source:".
+- Keep the end percent and the hours exactly. You may omit the start percent — the chart has it.
+- Cashtags uppercase. Sentence case. No hashtags, emojis, questions, or hype.
+- Banned openers and phrases: "is coming off the board", "started loading", "started dumping", "moved from", "been adding", "not one whale", "the 7d pnl crowd".
+- Do not invent coins, prices, or reasons that are not in FACTS.
+Voice: someone who already looked at the board and is pointing at the part the screenshot left out."""
 
 
 def _tick(label: str) -> str:
@@ -45,27 +44,44 @@ def _crowd(story: Story) -> str:
     if story.ranker == "both":
         return random.choice(
             [
-                f"Hyperliquid's top {listed} (PnL + ROI)",
-                f"the combined PnL+ROI top {listed}",
+                f"the top {listed} on PnL + ROI",
+                f"PnL + ROI, top {listed}",
             ]
         )
-    metric = "PnL" if story.ranker == "pnl" else "ROI"
-    window = story.facts.get("window") or "7d"
+    window = str(story.facts.get("window") or ("7d PnL" if story.ranker == "pnl" else "7d ROI"))
     return random.choice(
         [
-            f"Hyperliquid's top {listed} ({window} {metric})",
-            f"the top {listed} wallets on {window} {metric}",
-            f"top {listed} {metric} wallets",
+            f"the top {listed} ({window})",
+            f"top {listed}, {window}",
         ]
     )
 
 
 def _metric(story: Story) -> str:
     if story.ranker == "both":
-        return "PnL+ROI"
-    metric = "PnL" if story.ranker == "pnl" else "ROI"
-    window = story.facts.get("window") or "7d"
-    return f"{window} {metric}"
+        return "PnL + ROI"
+    return str(story.facts.get("window") or ("7d PnL" if story.ranker == "pnl" else "7d ROI"))
+
+
+def _side_word(side: str) -> str:
+    if side == "long":
+        return "longs"
+    if side == "short":
+        return "shorts"
+    return ""
+
+
+def _also_line(story: Story) -> str:
+    f = story.facts
+    label = f.get("also_label")
+    pct = f.get("also_pct")
+    if not label or pct is None:
+        return ""
+    if str(label).upper() == str(f.get("label") or "").upper():
+        return ""
+    side = _side_word(str(f.get("also_side") or ""))
+    bit = f" {side}" if side else ""
+    return f"{_tick(str(label))}{bit} still {pct}% on the same board — that's the part this chart leaves out."
 
 
 def _maybe_source(story: Story, lines: list[str]) -> str:
@@ -78,59 +94,56 @@ def _maybe_source(story: Story, lines: list[str]) -> str:
 def _load(story: Story) -> str:
     f = story.facts
     t = _tick(f["label"])
-    crowd = _crowd(story)
-    from_pct = float(f["from_pct"])
-    to_pct = float(f["to_pct"])
-    ratio = (to_pct / from_pct) if from_pct > 0 else 1.0
-    if ratio >= 2.9:
-        hook = [
-            f"{t} just tripled on the board — {f['from_pct']}% → {f['to_pct']}% in {f['hours']} hours.",
-            f"That's the share of {crowd} sitting in it. One wallet, one vote.",
-        ]
-    elif ratio >= 1.9:
-        hook = [
-            f"{t} more than doubled among {crowd}.",
-            f"Hold {f['from_pct']}% → {f['to_pct']}% in {f['hours']} hours.",
-        ]
-    else:
-        hook = [
-            f"{t} hold among {crowd} went {f['from_pct']}% → {f['to_pct']}% in {f['hours']} hours.",
-            "Not one whale — share of wallets in the name.",
-        ]
-    a = [hook]
-    a.append(
+    board = _crowd(story)
+    also = _also_line(story)
+    side = _side_word(str(f.get("side") or ""))
+    side_bit = f" {side}" if side else ""
+    voices = [
         [
-            f"{crowd} started loading {t} at {f['start']}.",
-            f"{f['from_pct']}% → {f['to_pct']}% (+{f['pp']}pp) in {f['hours']} hours.",
-        ]
-    )
-    if ratio < 1.9:
-        a.append(
+            f"{t}{side_bit} now {f['to_pct']}% of {board}, {f['hours']}h.",
+            also or "One line. The rest of the names are on the map.",
+        ],
+        [
+            also or f"The chart is only {t}.",
+            f"{f['pp']}pp in {f['hours']}h, now {f['to_pct']}%.",
+        ],
+        [
+            f"{f['hours']}h, {t}{side_bit} at {f['to_pct']}%.",
+            also or f"Was {f['from_pct']}% — the other tiles are why the link is there.",
+        ],
+    ]
+    if float(f["to_pct"]) >= float(f["from_pct"]) * 1.9 and float(f["from_pct"]) > 0:
+        voices.append(
             [
-                f"{t} is getting crowded. {f['from_pct']}% of {crowd} → {f['to_pct']}% in {f['hours']}h.",
+                f"{t}{side_bit} nearly doubled in {f['hours']}h. Now {f['to_pct']}%.",
+                also or "The board shows who didn't.",
             ]
         )
-    return _maybe_source(story, random.choice(a))
+    return _maybe_source(story, random.choice(voices))
 
 
 def _dump(story: Story) -> str:
     f = story.facts
     t = _tick(f["label"])
-    crowd = _crowd(story)
-    a = [
+    board = _crowd(story)
+    also = _also_line(story)
+    side = _side_word(str(f.get("side") or ""))
+    side_bit = f" {side}" if side else ""
+    voices = [
         [
-            f"{t} is coming off the board.",
-            f"{crowd} cut hold {f['from_pct']}% → {f['to_pct']}% in {f['hours']} hours.",
+            f"{t}{side_bit} down to {f['to_pct']}% of {board} in {f['hours']}h.",
+            also or "Whatever took that share is on the map.",
         ],
         [
-            f"{crowd} started dumping {t} at {f['start']}.",
-            f"{f['from_pct']}% → {f['to_pct']}% ({f['pp']}pp off).",
+            also or f"Look at who is still large.",
+            f"{t} gave up {f['pp']}pp. {f['to_pct']}% left after {f['hours']}h.",
         ],
         [
-            f"{t} faded {f['from_pct']}% → {f['to_pct']}% in {f['hours']}h among {crowd}.",
+            f"{f['hours']}h and {t} is {f['to_pct']}% of {board}.",
+            also or f"It was {f['from_pct']}%. The link is the other names.",
         ],
     ]
-    return _maybe_source(story, random.choice(a))
+    return _maybe_source(story, random.choice(voices))
 
 
 def _inflow(story: Story) -> str:
@@ -273,7 +286,7 @@ def _numbers_ok(story: Story, text: str) -> bool:
     f = story.facts
     needed: list[str] = []
     if story.kind in {"load", "dump"}:
-        needed = [f"{f['from_pct']}", f"{f['to_pct']}", str(f["hours"])]
+        needed = [f"{f['to_pct']}", str(f["hours"])]
     elif story.kind in {"inflow", "outflow"}:
         needed = [f"{f['pp']}", f"{f['hold_pct']}"]
     elif story.kind == "dominate":
@@ -302,9 +315,19 @@ def _looks_bot(text: str) -> bool:
     low = text.lower()
     if low == text and len(text) > 40:
         return True
-    if "source:" in low:
-        return True
-    if "been adding" in low or "this tracks" in low or low.startswith("yeah"):
+    banned = (
+        "source:",
+        "been adding",
+        "this tracks",
+        "is coming off the board",
+        "started loading",
+        "started dumping",
+        "moved from",
+        "not one whale",
+        "pnl pnl",
+        "roi roi",
+    )
+    if any(phrase in low for phrase in banned) or low.startswith("yeah"):
         return True
     return False
 
@@ -356,7 +379,7 @@ def _claude(cfg: Settings, story: Story) -> str | None:
             getattr(usage, "output_tokens", "?"),
         )
     if not text or not _numbers_ok(story, text) or _looks_bot(text):
-        log.info("Claude output dropped (numbers, empty, or bot-like)")
+        log.info("Claude output dropped: %s", (text or "")[:180].replace("\n", " | "))
         return None
     if story.include_source and story.source_line not in text:
         text = _fit(f"{text}\n{story.source_line}")

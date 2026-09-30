@@ -63,6 +63,7 @@ class Settings:
     x_api_secret: str
     x_access_token: str
     x_access_token_secret: str
+    x_bearer: str
     x_user: str
     promo_before_quote: int
     skip_rate: float
@@ -128,12 +129,13 @@ def load_settings() -> Settings:
         source_rate=min(1.0, max(0.0, _f("SOURCE_RATE", 1.0))),
         anthropic_key=_s("ANTHROPIC_API_KEY", ""),
         claude_model=_s("CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
-        claude_rate=min(1.0, max(0.0, _f("CLAUDE_RATE", 0.40))),
-        claude_max_per_day=max(0, _i("CLAUDE_MAX_PER_DAY", 5)),
+        claude_rate=min(1.0, max(0.0, _f("CLAUDE_RATE", 0.75))),
+        claude_max_per_day=max(0, _i("CLAUDE_MAX_PER_DAY", 6)),
         x_api_key=_s("X_API_KEY", ""),
         x_api_secret=_s("X_API_SECRET", ""),
         x_access_token=_s("X_ACCESS_TOKEN", ""),
         x_access_token_secret=_s("X_ACCESS_TOKEN_SECRET", ""),
+        x_bearer=_s("X_BEARER_TOKEN", ""),
         x_user=_s("X_USER", "johnyi0x").lstrip("@").lower(),
         promo_before_quote=max(1, _i("PROMO_BEFORE_QUOTE", 2)),
         skip_rate=min(0.2, max(0.0, _f("SKIP_RATE", 0.08))),

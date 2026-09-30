@@ -382,8 +382,10 @@ def render_hold(board: Board, series: list[Series], story: Story | None, focus: 
                         MUTED,
                         "mb",
                     )
-                tag = f"{_cash(s.label)}  {last_p.hold_pct * 100:.1f}%"
-                _text(d, (x + 16, y), tag, _font(34, True), color, "lm", stroke=1)
+                tag = f"{last_p.hold_pct * 100:.1f}%"
+                # Left of the dot. A label to the right gets clipped in the X crop
+                # ("$BTC 15."). The legend already names the coin.
+                _text(d, (x - 16, y), tag, _font(32, True), color, "rm", stroke=1)
 
     for s in series:
         if s.coin != focus:
