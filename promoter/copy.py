@@ -70,10 +70,9 @@ def _also_bit(story: Story) -> str:
 
 
 def _maybe_source(story: Story, lines: list[str]) -> str:
-    text = "\n".join(line for line in lines if line).strip()
-    if story.include_source and story.source_line not in text:
-        text = f"{text}\n{story.source_line}"
-    return text.strip()
+    # A URL in the text is $0.20. The same post with no URL is $0.015.
+    # The chart already prints bagrank.xyz. Do not put it in the tweet.
+    return "\n".join(line for line in lines if line).strip()
 
 
 def _opener(text: str) -> str:
@@ -258,20 +257,35 @@ def _split_cta(text: str) -> tuple[str, str]:
     return text.strip(), ""
 
 
+_URL = re.compile(
+    r"https?://\S+|www\.\S+|\b[\w.-]+\.(?:xyz|com|io|app|gg|net|org)\b\S*",
+    re.I,
+)
+
+
+def strip_urls(text: str) -> str:
+    """X bills a post with a link at $0.20 and a post without one at $0.015."""
+    kept: list[str] = []
+    for line in text.splitlines():
+        cleaned = _URL.sub("", line).strip(" \t-–—")
+        if cleaned:
+            kept.append(cleaned)
+    return "\n".join(kept).strip()
+
+
 def _fit(text: str, limit: int = 280) -> str:
+    text = strip_urls(text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if len(text) <= limit:
         return text
-    body, cta = _split_cta(text)
-    reserve = (1 + len(cta)) if cta else 0
-    while body and len(body) + reserve > limit:
-        if "\n" in body:
-            body = body.rsplit("\n", 1)[0]
+    while text and len(text) > limit:
+        if "\n" in text:
+            text = text.rsplit("\n", 1)[0]
         else:
-            body = body[: max(0, limit - reserve)].rstrip()
+            text = text[:limit].rstrip()
             break
-    return (f"{body}\n{cta}" if cta else body).strip()[:limit]
+    return text.strip()[:limit]
 
 
 def _numbers_ok(story: Story, text: str) -> bool:

@@ -235,7 +235,7 @@ def run_once(cfg: Settings, store: Store, *, force: bool = False) -> str:
         log.info("Leaving this slot empty so the account is not a metronome")
         return "skip"
 
-    if store.want_quote(cfg.promo_before_quote):
+    if cfg.quotes_enabled and store.want_quote(cfg.promo_before_quote):
         if run_quote(cfg, store, now):
             return "quote"
         if store.want_quote(cfg.promo_before_quote):
@@ -251,16 +251,21 @@ def run_forever(cfg: Settings) -> None:
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     store = Store(cfg.data_dir, neon_dsn=cfg.pnl_url)
     log.info(
-        "Promoter start dry=%s claude=%s x=%s roi=%s interval=%.0f-%.0fmin cap=%s/day quote_every=%s",
+        "Promoter start dry=%s claude=%s x=%s roi=%s quotes=%s interval=%.0f-%.0fmin cap=%s/day",
         cfg.dry_run,
         cfg.has_claude(),
         cfg.has_x(),
         cfg.has_roi(),
+        cfg.quotes_enabled,
         cfg.min_interval_min,
         cfg.max_interval_min,
         cfg.max_posts_per_day,
-        cfg.promo_before_quote,
     )
+
+    if store.x_quiet():
+        wait = float(store.data.get("x_quiet_until") or 0) - time.time()
+        log.error("X paused after a previous failure — no calls for %.0f min", max(0, wait) / 60)
+        time.sleep(max(60.0, wait))
 
     last = store.last_post_at()
     if last > 0:
@@ -288,14 +293,9 @@ def run_forever(cfg: Settings) -> None:
             log.info("Stopped")
             return
         except Exception as exc:
-            msg = str(exc).lower()
-            if "429" in msg or "rate limit" in msg:
-                sleep_s = random.uniform(50 * 60, 95 * 60)
-                log.exception("X rate limit — sleep %.0fmin", sleep_s / 60)
-                time.sleep(sleep_s)
-                continue
-            log.exception("Cycle error — retry in 90s")
-            time.sleep(90.0)
+            store.quiet_x(12)
+            log.exception("X or cycle error — no more X calls for 12 hours, including after a restart: %s", exc)
+            time.sleep(12 * 3600)
             continue
         sleep_s = next_interval_s(cfg, after_quote=after_quote)
         log.info("Next slot in %.0fmin", sleep_s / 60.0)

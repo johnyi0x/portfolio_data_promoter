@@ -47,6 +47,7 @@ class Store:
             "promo_since_quote": 0,
             "quote_fail_streak": 0,
             "quotes_paused_until": 0.0,
+            "x_quiet_until": 0.0,
             "quoted": [],
             "last_pairs": [],
         }
@@ -112,6 +113,14 @@ class Store:
 
     def pause_quotes(self, hours: float) -> None:
         self.data["quotes_paused_until"] = time.time() + hours * 3600
+        self.save()
+
+    def x_quiet(self) -> bool:
+        return time.time() < float(self.data.get("x_quiet_until") or 0)
+
+    def quiet_x(self, hours: float) -> None:
+        """No X call until this passes, including after a restart."""
+        self.data["x_quiet_until"] = time.time() + hours * 3600
         self.save()
 
     def want_quote(self, promo_before: int) -> bool:

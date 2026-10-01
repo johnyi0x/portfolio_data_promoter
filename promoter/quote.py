@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .config import Settings
+from .copy import strip_urls
 from .state import Store
 
 log = logging.getLogger("promoter")
@@ -104,9 +105,7 @@ def quote_comment(pair: PairHint, include_source: bool, host: str) -> str:
         ]
     )
     text = "\n".join(lines)
-    if include_source:
-        text = f"{text}\n{src}"
-    return text.strip()[:280]
+    return strip_urls(text)[:280]
 
 
 def _age_days(created: datetime | None, now: datetime) -> float:
@@ -231,7 +230,7 @@ def pick_quote(
     seen_authors = store.quoted_authors()
     best: FoundTweet | None = None
 
-    for pair in pairs[:3]:
+    for pair in pairs[:1]:
         query = search_query(pair)
         try:
             tweets, users = search_recent(client, query)

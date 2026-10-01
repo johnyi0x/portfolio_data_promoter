@@ -66,6 +66,7 @@ class Settings:
     x_bearer: str
     x_user: str
     promo_before_quote: int
+    quotes_enabled: bool
     skip_rate: float
 
     @property
@@ -138,5 +139,6 @@ def load_settings() -> Settings:
         x_bearer=_s("X_BEARER_TOKEN", ""),
         x_user=_s("X_USER", "johnyi0x").lstrip("@").lower(),
         promo_before_quote=max(1, _i("PROMO_BEFORE_QUOTE", 2)),
+        quotes_enabled=_b("QUOTES", False),
         skip_rate=min(0.2, max(0.0, _f("SKIP_RATE", 0.08))),
     )
